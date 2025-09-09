@@ -1,12 +1,17 @@
-
+# services_referrals_tool.py
 import io
 from pathlib import Path
 from datetime import date
 
 import pandas as pd
 import streamlit as st
-import xlsxwriter
-from xlsxwriter.utility import xl_col_to_name
+
+# Try xlsxwriter; fall back to openpyxl if not available
+try:
+    import xlsxwriter  # noqa: F401
+    HAS_XLSXWRITER = True
+except Exception:
+    HAS_XLSXWRITER = False
 
 st.set_page_config(page_title="HCHSP Services & Referrals Tool", layout="wide")
 
@@ -133,7 +138,10 @@ def build_author_fix_list(df, cols):
     )
     return grouped
 
-def write_excel(df, summary, author_fix, cols, cutoff_date):
+def write_excel_xlsxwriter(df, summary, author_fix, cols):
+    """Rich export (logo+formatting) - requires xlsxwriter."""
+    from xlsxwriter.utility import xl_col_to_name  # safe: only called if xlsxwriter present
+
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         sheet1 = "Services & Referrals"
@@ -158,17 +166,16 @@ def write_excel(df, summary, author_fix, cols, cutoff_date):
         ws1.set_row(0, None, fmt_header)
         ws1.autofilter(0, 0, 0, df_out.shape[1] - 1)
 
-        # Insert logo only on Services & Referrals
         logo_path = Path("header_logo.png")
         if logo_path.exists():
-            ws1.set_row(0, 60)  # give the logo room; adjust if needed
+            ws1.set_row(0, 60)  # room for logo
             ws1.insert_image("A1", str(logo_path), {
                 "x_scale": 0.5,
                 "y_scale": 0.5,
-                "object_position": 1  # move and size with cells
+                "object_position": 1
             })
 
-        # Date column
+        # Date column format
         try:
             date_col_idx = list(df_out.columns).index(cols["date"])
             ws1.set_column(date_col_idx, date_col_idx, 12, fmt_date)
@@ -176,7 +183,7 @@ def write_excel(df, summary, author_fix, cols, cutoff_date):
             pass
 
         # Total row
-        last_row_1 = len(df_out) + 1  # 1-based; header is row 1
+        last_row_1 = len(df_out) + 1  # header is row 1
         key_col_idx = list(df_out.columns).index(cols["general"])
         key_col_letter = xl_col_to_name(key_col_idx)
         ws1.write(last_row_1, 0, "Total", fmt_total)
@@ -192,7 +199,6 @@ def write_excel(df, summary, author_fix, cols, cutoff_date):
             ws2.freeze_panes(1, 0)
             ws2.set_row(0, None, fmt_header)
             ws2.autofilter(0, 0, 0, summary.shape[1] - 1)
-        # Explicitly clear any header/footer content (prevents stray header images)
         ws2.set_header('')
         ws2.set_footer('')
 
@@ -206,6 +212,31 @@ def write_excel(df, summary, author_fix, cols, cutoff_date):
         ws3.set_footer('')
 
     return output.getvalue()
+
+def write_excel_fallback(df, summary, author_fix, cols):
+    """Plain export if xlsxwriter is not installed (no logo, no formatting)."""
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        sheet1 = "Services & Referrals"
+        sheet2 = "PIR Summary"
+        sheet3 = "Author Fix List"
+
+        df_out = df[[cols["family"], cols["pid"], cols["last"], cols["first"],
+                     cols["center"], cols["date"], cols["general"], cols["detail"],
+                     cols["author"], cols["result"], "Counts for PIR", "Reason (if not counted)"]].copy()
+        df_out.to_excel(writer, sheet_name=sheet1, index=False)
+        summary.to_excel(writer, sheet_name=sheet2, index=False)
+        author_fix.to_excel(writer, sheet_name=sheet3, index=False)
+    return output.getvalue()
+
+def write_excel(df, summary, author_fix, cols):
+    if HAS_XLSXWRITER:
+        return write_excel_xlsxwriter(df, summary, author_fix, cols)
+    else:
+        # Tell the user we’re exporting a plain file as a temporary fallback.
+        st.warning("`xlsxwriter` isn’t installed on this deployment — exporting a plain Excel without logo/formatting. "
+                   "Add `xlsxwriter` to requirements.txt to enable branding & formatting.")
+        return write_excel_fallback(df, summary, author_fix, cols)
 
 # ----------------------------
 # Streamlit Header (UI only)
@@ -260,7 +291,7 @@ else:
         st.subheader("Preview: Author Fix List")
         st.dataframe(author_fix, use_container_width=True)
 
-        excel_bytes = write_excel(processed, summary, author_fix, cols, pd.to_datetime(cutoff))
+        excel_bytes = write_excel(processed, summary, author_fix, cols)
         st.download_button(
             label="📥 Download Excel Report",
             data=excel_bytes,
