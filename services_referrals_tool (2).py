@@ -273,7 +273,7 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
         k_details = int(summary.shape[0]) if len(summary) else 0
         ws4.merge_range(2, 1, 3, 2, "PIR Children", kpi_lbl); ws4.merge_range(4, 1, 5, 2, k_children, kpi_val)
         ws4.merge_range(2, 3, 3, 4, "PIR Families", kpi_lbl); ws4.merge_range(4, 3, 5, 4, k_families, kpi_val)
-        ws4.merge_range(2, 5, 3, 6, "Detailed Rows", kpi_lbl); ws4.merge_range(4, 5, 5, 6, k_details, kpi_val)
+        ws4.merge_range(2, 5, 3, 6, "Number of Detailed Services", kpi_lbl); ws4.merge_range(4, 5, 5, 6, k_details, kpi_val)
         top_det = summary.sort_values("PIR (Distinct Families)", ascending=False).reset_index(drop=True)
         start_r, start_c = 8, 1
         top_det.to_excel(writer, index=False, sheet_name="PIR Dashboard", startrow=start_r, startcol=start_c)
