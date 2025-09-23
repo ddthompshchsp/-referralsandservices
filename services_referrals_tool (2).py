@@ -10,9 +10,6 @@ import streamlit as st
 
 st.set_page_config(page_title="HCHSP Services & Referrals — Tool", layout="wide")
 
-# =========================
-# Header (branded like your other tools)
-# =========================
 logo_path = Path("header_logo.png")  # put your logo file next to this script
 hdr_l, hdr_c, hdr_r = st.columns([1, 2, 1])
 with hdr_c:
