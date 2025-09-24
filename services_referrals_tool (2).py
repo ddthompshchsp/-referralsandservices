@@ -145,7 +145,7 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
     df[DATE_COL] = _parse_to_dt(df[DATE_COL])
     df = df[df[DATE_COL].notna() & (df[DATE_COL] >= pd.Timestamp(cutoff))].copy()
 
-    # Normalized keys (CRITICAL FIX so Summary matches Services sheet)
+    # Normalized keys (string-stable IDs)
     df["_PID_KEY"] = df[PID_COL].apply(_pid_key)
     df["_FID_KEY"] = df[FID_COL].apply(_fid_key)
 
@@ -211,7 +211,7 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
     details = details.fillna("")
 
     # =========================
-    # PIR Summary (CRITICAL FIX: use string keys for distinct counts)
+    # PIR Summary (Children-only)
     # =========================
     pir_rows = df[df["Counts for PIR"] == "Yes"].copy()
 
@@ -225,19 +225,8 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
         .reset_index()
     )
 
-    # Distinct families by (General, Detail, PIR code) using _FID_KEY
-    per_family = (
-        pir_rows
-        .drop_duplicates(subset=["_FID_KEY", GEN_COL, "_PIR_CODE"])
-        .groupby([GEN_COL, DET_COL])["_FID_KEY"]
-        .nunique()
-        .rename("PIR (Distinct Families)")
-        .reset_index()
-    )
-
-    summary = per_child.merge(per_family, on=[GEN_COL, DET_COL], how="outer").fillna(0)
-    summary.rename(columns={GEN_COL: "GENERAL service", DET_COL: "DETAILED services"}, inplace=True)
-    summary = summary[["GENERAL service", "DETAILED services", "Distinct Children (PID)", "PIR (Distinct Families)"]]
+    summary = per_child.rename(columns={GEN_COL: "GENERAL service", DET_COL: "DETAILED services"})
+    summary = summary[["GENERAL service", "DETAILED services", "Distinct Children (PID)"]]
 
     # =========================
     # Author Fix List (actionable)
@@ -365,10 +354,12 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
                           f"=SUBTOTAL(109,{helper_col_letter}5:{helper_col_letter}{last_row_0+1})",
                           bold_center)
 
-        # ---- PIR Summary sheet
+        # ---- PIR Summary (children only) — make row 1 taller for logo
         summary.to_excel(writer, index=False, sheet_name="PIR Summary", startrow=1)
         ws2 = writer.sheets["PIR Summary"]
-        ws2.hide_gridlines(0); ws2.set_row(0,24)
+        ws2.hide_gridlines(0)
+        ws2.set_row(0, 42)   # taller so logo fits
+        ws2.set_row(1, 26)
 
         if logo_path.exists():
             ws2.set_column(0, 0, 16)
@@ -376,9 +367,9 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
                              {"x_offset":2, "y_offset":2, "x_scale":0.53, "y_scale":0.53, "object_position": 1})
         ws2.write(0, 1, "PIR Summary", wb.add_format({"bold":True,"font_size":14,"align":"left","font_color":HCHSP_NAVY}))
 
-        ws2.set_row(1,26)
         for c, col in enumerate(summary.columns):
             ws2.write(1, c, col, hdr_fmt)
+
         last_row2 = len(summary) + 1
         last_col2 = len(summary.columns) - 1
         ws2.autofilter(1, 0, last_row2, last_col2)
@@ -388,33 +379,33 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
             for idx, name in enumerate(cols):
                 n = str(name).lower()
                 w = 24
-                if "detailed services" in n: w = 44
+                if "detailed services" in n:
+                    w = 44
                 ws.set_column(idx, idx, w)
         _set_widths2(ws2, summary.columns)
 
-        # Dynamic SUBTOTALS block (respects filters)
+        # Dynamic SUBTOTAL (respects filters) — Children only
         start_excel_row = 3
         end_excel_row = last_row2 + 1
-        children_col = _col_letter(2)
-        families_col = _col_letter(3)
-        ws2.write(last_row2 + 2, 1, "Dynamic Totals", total_fmt)
-        ws2.write_formula(last_row2 + 2, 2, f"=SUBTOTAL(109,{children_col}{start_excel_row}:{children_col}{end_excel_row})", total_fmt)
-        ws2.write_formula(last_row2 + 2, 3, f"=SUBTOTAL(109,{families_col}{start_excel_row}:{families_col}{end_excel_row})", total_fmt)
+        children_col = _col_letter(2)  # column "Distinct Children (PID)"
+        ws2.write(last_row2 + 2, 1, "Dynamic Total — Children", total_fmt)
+        ws2.write_formula(last_row2 + 2, 2,
+                          f"=SUBTOTAL(109,{children_col}{start_excel_row}:{children_col}{end_excel_row})",
+                          total_fmt)
 
-        # C.44 grand total (ignores filters on purpose)
-        ws2.write(last_row2 + 3, 1, "C.44 – Sum of PIR Families (TOTAL)", c44_fmt)
-        ws2.write_formula(last_row2 + 3, 3, f"=SUM({families_col}{start_excel_row}:{families_col}{end_excel_row})", c44_fmt)
-
-        # ---- Author Fix List
+        # ---- Author Fix List — taller row 1 for logo
         author_fix.to_excel(writer, index=False, sheet_name="Author Fix List", startrow=1)
         ws3 = writer.sheets["Author Fix List"]
-        ws3.hide_gridlines(0); ws3.set_row(0,24)
+        ws3.hide_gridlines(0)
+        ws3.set_row(0, 42)  # taller so logo fits
+        ws3.set_row(1, 26)
+
         if logo_path.exists():
             ws3.set_column(0, 0, 16)
             ws3.insert_image(0, 0, str(logo_path),
                              {"x_offset":2, "y_offset":2, "x_scale":0.53, "y_scale":0.53, "object_position": 1})
-        ws3.write(0, 1, "Author Fix List (Actionable only)", wb.add_format({"bold":True,"font_size":14,"align":"left","font_color":HCHSP_NAVY}))
-        ws3.set_row(1,26)
+        ws3.write(0, 1, "Author Fix List (Actionable only)",
+                  wb.add_format({"bold":True,"font_size":14,"align":"left","font_color":HCHSP_NAVY}))
         for c, col in enumerate(author_fix.columns):
             ws3.write(1, c, col, hdr_fmt)
         ws3.autofilter(1, 0, len(author_fix) + 1, len(author_fix.columns) - 1)
@@ -425,7 +416,7 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
             if "pids" in name.lower(): w = 50
             ws3.set_column(idx, idx, w)
 
-        # ---- PIR Dashboard (KPIs + Top Detailed Services)
+        # ---- PIR Dashboard (KPIs + Top Detailed Services) — removed Families KPI
         ws4 = wb.add_worksheet("PIR Dashboard")
         ws4.hide_gridlines(0); ws4.set_row(0,24)
         if logo_path.exists():
@@ -435,14 +426,12 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
         ws4.merge_range(0, 1, 0, 6, "PIR Dashboard", title_fmt)
 
         k_children = int(summary["Distinct Children (PID)"].sum()) if len(summary) else 0
-        k_families = int(summary["PIR (Distinct Families)"].sum()) if len(summary) else 0
         k_details = int(summary.shape[0]) if len(summary) else 0
 
         ws4.merge_range(2, 1, 3, 2, "PIR Children", kpi_lbl); ws4.merge_range(4, 1, 5, 2, k_children, kpi_val)
-        ws4.merge_range(2, 3, 3, 4, "PIR Families", kpi_lbl); ws4.merge_range(4, 3, 5, 4, k_families, kpi_val)
-        ws4.merge_range(2, 5, 3, 6, "Number of Detailed Services", kpi_lbl); ws4.merge_range(4, 5, 5, 6, k_details, kpi_val)
+        ws4.merge_range(2, 3, 3, 4, "Number of Detailed Services", kpi_lbl); ws4.merge_range(4, 3, 5, 4, k_details, kpi_val)
 
-        top_det = summary.sort_values("PIR (Distinct Families)", ascending=False).reset_index(drop=True)
+        top_det = summary.sort_values("Distinct Children (PID)", ascending=False).reset_index(drop=True)
         start_r, start_c = 8, 1
         top_det.to_excel(writer, index=False, sheet_name="PIR Dashboard", startrow=start_r, startcol=start_c)
         for c, col in enumerate(top_det.columns):
@@ -450,12 +439,12 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
         end_r = start_r + len(top_det)
 
         chart1 = wb.add_chart({"type":"column"})
-        chart1.set_title({"name":"Top Detailed Services by PIR Families"})
-        chart1.set_y_axis({"name":"Families"})
+        chart1.set_title({"name":"Top Detailed Services by Children"})
+        chart1.set_y_axis({"name":"Children"})
         chart1.add_series({
-            "name":      ["PIR Dashboard", start_r, start_c + 3],
+            "name":      ["PIR Dashboard", start_r, start_c + 2],
             "categories":["PIR Dashboard", start_r + 1, start_c + 1, end_r, start_c + 1],
-            "values":    ["PIR Dashboard", start_r + 1, start_c + 3, end_r, start_c + 3],
+            "values":    ["PIR Dashboard", start_r + 1, start_c + 2, end_r, start_c + 2],
             "fill":      {"color": HCHSP_NAVY},
             "border":    {"color": HCHSP_NAVY}
         })
@@ -490,26 +479,7 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
                           f"=SUBTOTAL(109,{services_col_letter}{start_excel_row}:{services_col_letter}{end_excel_row})",
                           yellow_total)
 
-        chart2 = wb.add_chart({"type":"column"})
-        chart2.set_title({"name":"Services and Referrals"})
-        chart2.set_y_axis({"name":"Total Services"})
-        chart2.add_series({
-            "name":      ["PIS Dashboard", gs_r, gs_c + 2],
-            "categories":["PIS Dashboard", gs_r + 1, gs_c + 1, gs_end_r, gs_c + 1],
-            "values":    ["PIS Dashboard", gs_r + 1, gs_c + 2, gs_end_r, gs_c + 2],
-            "fill":      {"color": HCHSP_NAVY},
-            "border":    {"color": HCHSP_NAVY},
-            "data_labels":{"value":True,"position":"outside_end","font":{"bold":True,"size":14}}
-        })
-        chart2.set_size({"width":760,"height":320})
-        ws5.insert_chart(4, 7, chart2)
-
-        ws5.write(gs_end_r + 3, gs_c + 1, "Totals ➜", wb.add_format({"bold":True,"align":"right"}))
-        ws5.write_formula(gs_end_r + 3, gs_c + 2,
-                          f"=SUBTOTAL(109,{services_col_letter}{start_excel_row}:{services_col_letter}{end_excel_row})",
-                          wb.add_format({"bold":True,"border":1}))
-
-        # Result distribution
+        # Result distribution pie — percentages only (fixed)
         res_counts = df[RES_COL].value_counts().reset_index()
         res_counts.columns = ["Result", "Count"]
         rc_r, rc_c = gs_end_r + 8, 1
@@ -572,3 +542,4 @@ if process and sref_file:
         st.success("Workbook generated.")
     except Exception as e:
         st.error(f"Processing error: {e}")
+
