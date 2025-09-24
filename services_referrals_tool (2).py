@@ -388,7 +388,7 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
         start_excel_row = 3
         end_excel_row = last_row2 + 1
         children_col = _col_letter(2)  # column "Distinct Children (PID)"
-        ws2.write(last_row2 + 2, 1, "Dynamic Total — Children", total_fmt)
+        ws2.write(last_row2 + 2, 1, "Dynamic Total — Services & Referrals", total_fmt)
         ws2.write_formula(last_row2 + 2, 2,
                           f"=SUBTOTAL(109,{children_col}{start_excel_row}:{children_col}{end_excel_row})",
                           total_fmt)
@@ -428,7 +428,7 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
         k_children = int(summary["Distinct Children (PID)"].sum()) if len(summary) else 0
         k_details = int(summary.shape[0]) if len(summary) else 0
 
-        ws4.merge_range(2, 1, 3, 2, "PIR Children", kpi_lbl); ws4.merge_range(4, 1, 5, 2, k_children, kpi_val)
+        ws4.merge_range(2, 1, 3, 2, "PIR Families", kpi_lbl); ws4.merge_range(4, 1, 5, 2, k_children, kpi_val)
         ws4.merge_range(2, 3, 3, 4, "Number of Detailed Services", kpi_lbl); ws4.merge_range(4, 3, 5, 4, k_details, kpi_val)
 
         top_det = summary.sort_values("Distinct Children (PID)", ascending=False).reset_index(drop=True)
@@ -439,8 +439,8 @@ def build_workbook(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True) 
         end_r = start_r + len(top_det)
 
         chart1 = wb.add_chart({"type":"column"})
-        chart1.set_title({"name":"Top Detailed Services by Children"})
-        chart1.set_y_axis({"name":"Children"})
+        chart1.set_title({"name":"Top Detailed Services"})
+        chart1.set_y_axis({"name":"Totals"})
         chart1.add_series({
             "name":      ["PIR Dashboard", start_r, start_c + 2],
             "categories":["PIR Dashboard", start_r + 1, start_c + 1, end_r, start_c + 1],
