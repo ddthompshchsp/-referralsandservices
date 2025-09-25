@@ -147,26 +147,23 @@ def build_data(df_raw: pd.DataFrame, cutoff: str, require_pir: bool = True):
     summary.rename(columns={GEN_COL: "GENERAL service", DET_COL: "DETAILED services"}, inplace=True)
     summary = summary[["GENERAL service", "DETAILED services", "Distinct Children (PID)", "PIR (Distinct Families)"]]
     author_col_name = _clean_header(AUTH_COL) if AUTH_COL else None
-    center_col_name = _clean_header(CENTER_COL) if CENTER_COL else None
     actionable = {"Missing General Service", "Missing Detailed Service", "Invalid/Missing Result", "Missing Service Date"}
     fix_rows = details[(details["Counts for PIR"] == "No") & (details["Reason (if not counted)"].isin(actionable))].copy()
-    if author_col_name:
-        group_cols = [author_col_name, "Reason (if not counted)"]
-        if center_col_name and center_col_name in fix_rows.columns:
-            group_cols.insert(1, center_col_name)
-        pids_by_group = (fix_rows.groupby(group_cols)[_clean_header(PID_COL)]
-                         .apply(lambda s: ", ".join(sorted({_format_pid(x) for x in s if str(x).strip() != ""}))))
+    if author_col_name and author_col_name in fix_rows.columns:
+        pids_by_group = (fix_rows.groupby([author_col_name, "Reason (if not counted)"])[_clean_header(PID_COL)].apply(lambda s: ", ".join(sorted({_format_pid(x) for x in s if str(x).strip() != ""}))))
         author_fix = pids_by_group.reset_index().rename(columns={_clean_header(PID_COL): "PIDs to Fix"})
         author_fix["Count of PIDs"] = author_fix["PIDs to Fix"].apply(lambda x: 0 if x == "" else len([p for p in x.split(", ") if p]))
     else:
-        base_cols = [center_col_name] if center_col_name else []
-        author_fix = pd.DataFrame(columns=base_cols + ["Reason (if not counted)", "PIDs to Fix", "Count of PIDs"])
+        author_fix = pd.DataFrame(columns=[author_col_name or "Author", "Reason (if not counted)", "PIDs to Fix", "Count of PIDs"])
     gen_month = (df.groupby([df["_month"], GEN_COL]).agg(Services=("Family ID", "count")).reset_index().rename(columns={"_month": "Month", GEN_COL: "GENERAL service"}))
     gen_month["Month"] = pd.to_datetime(gen_month["Month"]).dt.strftime("%b %Y")
     monthly = (df.groupby(df["_month"]).size().rename("Services").reset_index().rename(columns={"_month": "Month"}))
     return details, summary, author_fix, gen_month, monthly, df, GEN_COL, RES_COL, date_out
 
-def build_excel(details, summary, author_fix, gen_month, monthly, df, date_out) -> bytes:
+def build_excel(details, summary, author_fix, gen_month, monthly, df, date_out, require_pir=True) -> bytes:
+    HCHSP_NAVY = "#305496"
+    HCHSP_RED = "#C00000"
+    HCHSP_LIGHT = "#D9E1F2"
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
         wb = writer.book
@@ -268,7 +265,6 @@ def build_excel(details, summary, author_fix, gen_month, monthly, df, date_out) 
             w = 22
             if "reason" in name.lower(): w = 30
             if "pids" in name.lower(): w = 50
-            if "center" in name.lower() or "campus" in name.lower() or "location" in name.lower(): w = 28
             ws3.set_column(idx, idx, w)
         ws4 = wb.add_worksheet("PIR Dashboard")
         ws4.hide_gridlines(0); ws4.set_row(0,24)
@@ -299,7 +295,7 @@ def build_excel(details, summary, author_fix, gen_month, monthly, df, date_out) 
         if logo_path.exists():
             ws5.set_column(0, 0, 16)
             ws5.insert_image(0, 0, str(logo_path), {"x_offset":2, "y_offset":2, "x_scale":0.53, "y_scale":0.53, "object_position": 1})
-        ws5.merge_range(0, 1, 0, 14, "PIS Dashboard (General Services)", wb.add_format({"bold":True,"font_size":18,"align":"center","font_color":HCHSP_NAVY}))
+        ws5.merge_range(0, 1, 0, 14, "PIS Dashboard (General Services)", title_fmt)
         gs_r, gs_c = 2, 1
         gen_month_sorted = gen_month.sort_values(["Month", "Services"], ascending=[True, False]).reset_index(drop=True)
         gen_month_sorted = gen_month_sorted[["Month", "GENERAL service", "Services"]]
@@ -403,5 +399,5 @@ if sref_file:
     st.subheader("Author Fix List")
     st.dataframe(author_fix, use_container_width=True)
     pis_dashboard(gen_month, df_all, GEN_COL, RES_COL, month_single, show_labels)
-    xlsx = build_excel(details, summary, author_fix, gen_month, monthly, df_all, date_out)
+    xlsx = build_excel(details, summary, author_fix, gen_month, monthly, df_all, date_out, require_pir=st.session_state.get("require_pir", True))
     st.download_button("Download Styled Workbook (Excel)", data=xlsx, file_name="HCHSP_Services_Referrals_PIR.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
