@@ -1,5 +1,5 @@
+streamlit>=1.31
 pandas
-numpy
-streamlit
-xlsxwriter
 openpyxl
+xlsxwriter
+tzdata
