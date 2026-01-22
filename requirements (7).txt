@@ -1,6 +1,0 @@
-streamlit>=1.31
-pandas
-openpyxl
-xlsxwriter
-tzdata
-numpy
