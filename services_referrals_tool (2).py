@@ -42,7 +42,7 @@ def _clean_header(h: str) -> str:
     return re.sub(r"^(ST:|FD:)\s*", "", str(h).strip(), flags=re.I)
 
 def _parse_to_dt(series: pd.Series) -> pd.Series:
-    dt1 = pd.to_datetime(series, errors="coerce", infer_datetime_format=True)
+    dt1 = pd.to_datetime(series, errors="coerce")
     num = pd.to_numeric(series, errors="coerce")
     serial_mask = num.notna() & num.between(10000, 70000)
     dt2 = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
