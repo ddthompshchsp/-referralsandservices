@@ -1,5 +1,5 @@
 streamlit>=1.31
-pandas
+pandas>=2.2,<3.0
 openpyxl
 xlsxwriter
 tzdata
