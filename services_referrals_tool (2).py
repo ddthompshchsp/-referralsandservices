@@ -31,8 +31,7 @@ with st.sidebar:
         value=pd.to_datetime("2025-08-11").date()
     )
     st.caption("Only rows with Service Date ≥ this date are included.")
-    st.checkbox("Require 'PIR' in Detailed Service", value=True, key="require_pir")
-    st.caption("PIR must contain 'PIR' and a C.44 letter code (e.g., 'PIR C.44 n').")
+
 
 inp_l, inp_c, inp_r = st.columns([1, 2, 1])
 with inp_c:
